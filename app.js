@@ -1,6 +1,7 @@
 var db = require('./db');
 var express = require('express');
 var app = express();
+var jwt = require('jsonwebtoken'); 
 
 
 var url = require('url');
@@ -8,14 +9,33 @@ var querystring = require('querystring');
 
 var bodyParser = require('body-parser');
 var cookieParser = require('cookie-parser');
-var session = require('express-session');
 
-app.use(cookieParser());
-app.use(session({
+var requestSender;
+//var session = require('express-session');
+
+//app.use(cookieParser());
+
+
+/*app.use(session({
   secret: 'eventappsecret',
   resave: false,
   saveUninitialized: true
 }));
+
+app.all('/', function(req, res, next) {
+	console.log('app');
+	
+	db.User.findOne({ name: 'qwert' }, function(err, result) {
+    if (err) return console.error(err);
+		  if (result) {
+		    console.log(result);
+		  } else {
+		    
+		  }
+			
+			next();
+    });
+});*/
 /*
 //clear feed from all
 db.User.find(null)
@@ -70,22 +90,64 @@ db.User.aggregate(
       }
     );*/
 
+app.all('/', function (req, res, next) { 
+  var urlParsed = url.parse(req.url);
+  var queryString = querystring.parse(urlParsed.query);
+  // console.log(req.session.uId);
+
+  
+  
+
+  if (queryString.act != 'signin' && queryString.act != 'checkLogin'
+  	&& queryString.act != 'regme' && queryString.act != 'logout' ) {
+   	
+		if (typeof(queryString.token) == 'undefined') {
+			res.json({ status : "error", msg : "Ath us falied" });
+		  	return;
+		}
+
+		var token = queryString.token;
+		jwt.verify(token, 'secretkey', function(err, decoded) {
+
+		  if (!decoded) {
+		  	res.json({ status : "error", msg : "Ath us falied" });
+		  	return;
+		  } else {
+
+		  	requestSender = decoded.userId;
+		  	//console.log('sender : '+requestSender);
+		  	//console.log('ACCEPT');
+		  	next();
+		  }
+		});
+		
+  } else {
+  	//console.log('usecure');
+  	next();
+  }
+  
+ });
+
 
 app.get('/', function (req, res) { 
   var urlParsed = url.parse(req.url);
   var queryString = querystring.parse(urlParsed.query);
-  // console.log(req.session.uId);
+   
+  /*
   if (queryString.act != 'signin' && queryString.act != 'checkLogin' && queryString.act != 'regme' && queryString.act != 'logout' ) {
     if (typeof(req.session.uId) == 'undefined' || req.session.uId != queryString.userId) {
-	  res.json({ status : "error", msg : "Ath us falied" });
-	  return;
-	}
+		  res.json({ status : "error", msg : "Ath us falied" });
+		  return;
+		}
   }
+*/
+  
   
   
   //console.log(queryString);
   switch(queryString.act) {
     case 'signin' :
+    //console.log('signin');
 	  //res.setHeader('Access-Control-Allow-Origin', '*');
 	  if (typeof(queryString.login) == 'undefined' || typeof(queryString.password) == 'undefined'
         || queryString.login == '' || queryString.password == '') {
@@ -96,411 +158,421 @@ app.get('/', function (req, res) {
 		  if (!result || queryString.password != result.password) {
 		    res.json({ status : "error", msg : "Login or password are incorrect" });
 		  } else {
-		    req.session.uId = result._id;
-		    res.json({status : "ok", uId : result._id});
+		    //req.session.uId = result._id;
+		    var token = jwt.sign({userId : result._id}, 'secretkey');
+
+				//console.log(token);
+		    res.json({status : "ok", uId : result._id, token : token});
 		  }
 		//console.log(result);
 	    });
 	  }
-	break;
-	case 'logout' :
-	  delete(req.session.uId);
-	  res.json({status : "ok"});
-	break;
-	case 'checkLogin' :
-	  res.setHeader('Access-Control-Allow-Origin', '*');
-	  if (typeof(queryString.login) == 'undefined'|| queryString.login == '') {
-	    res.json({ status : "error", msg : "Login field is empty" });
-	  } else {
-	    db.User.findOne({ name: queryString.login }, function(err, result) {
-	    if (err) return console.error(err);
-		  if (result) {
-		    res.json({ status : "error" });
+		break;
+		case 'logout' :
+		  //delete(req.session.uId);
+		  res.json({status : "ok"});
+		break;
+		case 'checkLogin' :
+		  res.setHeader('Access-Control-Allow-Origin', '*');
+		  if (typeof(queryString.login) == 'undefined'|| queryString.login == '') {
+		    res.json({ status : "error", msg : "Login field is empty" });
 		  } else {
-		    res.json({status : "ok" });
-		  }
-		//console.log(result);
-	    });
-	  }
-	break;
-	
-	case 'regme' :
-	  res.setHeader('Access-Control-Allow-Origin', '*');
-	  console.log(queryString);
-	  
-	    if ( isUndef(queryString.login) || isUndef(queryString.password) 
-		  || queryString.password == '' || queryString.login == '') {
-		  res.json({ status : "error" });
-		  return;
-		}
-		if (!(/^[a-zA-Z0-9!@#$%^&_]{8,}$/.test(queryString.password))) {
-		  res.json({ status : "error" });
-		  return;	
-		}
-		if (!(/^[a-zA-Z0-9]{5,}$/.test(queryString.login))) {
-		  res.json({ status : "error" });
-		  return;	
-		}	  
-	    db.User.findOne({ name: queryString.login }, function(err, result) {
-	      if (err) {
-		    return console.error(err);
-		  }
-		  if (result) {
-		    res.json({ status : "error" });
-		  } else {
-		    var newUser = new db.User({
-			  name : queryString.login, password : queryString.password
-			});
-			newUser.save(function(err, result) {
-			  if (err) {
-				return console.error(err);
+		    db.User.findOne({ name: queryString.login }, function(err, result) {
+		    if (err) return console.error(err);
+			  if (result) {
+			    res.json({ status : "error" });
 			  } else {
-			    console.log(result);
-			    res.json({status : "Registration complete" });
+			    res.json({status : "ok" });
+			  }
+			//console.log(result);
+		    });
+		  }
+		break;
+		
+		case 'regme' :
+		//  res.setHeader('Access-Control-Allow-Origin', '*');
+		  //console.log(queryString);
+		  
+		    if ( isUndef(queryString.login) || isUndef(queryString.password) 
+			  || queryString.password == '' || queryString.login == '') {
+			  res.json({ status : "error" });
+			  return;
+			}
+			if (!(/^[a-zA-Z0-9!@#$%^&_]{8,}$/.test(queryString.password))) {
+			  res.json({ status : "error" });
+			  return;	
+			}
+			if (!(/^[a-zA-Z0-9]{5,}$/.test(queryString.login))) {
+			  res.json({ status : "error" });
+			  return;	
+			}	  
+		    db.User.findOne({ name: queryString.login }, function(err, result) {
+		      if (err) {
+			    return console.error(err);
+			  }
+			  if (result) {
+			    res.json({ status : "error" });
+			  } else {
+			    var newUser = new db.User({
+				  name : queryString.login, password : queryString.password
+				});
+				newUser.save(function(err, result) {
+				  if (err) {
+					return console.error(err);
+				  } else {
+				    console.log(result);
+				    res.json({status : "Registration complete" });
+				  }
+				});
+			    
+			  }
+		    });
+		  
+		break;
+		case 'getfeedlength' :
+		  db.User.findById(requestSender, function (err, user){
+			
+	      if (err) {
+			    res.json({ status : "error" });
+			    return console.error(err);
+				
+			  }
+			  if (user) {
+			    //console.log(events);
+				res.json({ status : "ok", feedlength : user.feed.length });
+				
+				
+			  }
+			  
+			  });
+			  
+		break;
+		case 'getfeeds' :
+		//requestSender
+				db.User.findById(requestSender, function (err, user){
+				if (err) {
+				  res.json({ status : "error" });
+				  return console.error(err);	
+				}
+				if (user) {
+				  res.json({ status : "ok", feed : user.feed });
+				} 
+		  });
+			  
+		break;
+		/*case 'getfeedby' :
+		if (isUndef(queryString.userId) || isUndef(queryString.entityType) || isUndef(queryString.entityId)) {
+			res.json({ status : "error" });
+		} else {
+			db.User.findById(queryString.userId, function (err, user){
+				if (err) {
+				  res.json({ status : "error" });
+				  return console.error(err);	
+				}
+				if (user) {
+				  res.json({ status : "ok", feed : user.feed });
+				} 
+		  })
+
+		}
+		 
+			  
+		break;*/
+		case 'addfriend' :
+		  
+		  if (isUndef(queryString.friendId)) {
+		    db.User.findOne({ name: queryString.friendlogin }, function(err, result) {
+		      if (err) {
+			    return console.error(err);
+			  }
+			  if (result) {
+			    res.json({friendId : result._id});
+			  } else {
+			    res.json({status : "error", msg : "Cant't find this user" });
 			  }
 			});
-		    
-		  }
-	    });
-	  
-	break;
-	case 'getfeedlength' :
-	  db.User.findById(queryString.userId, function (err, user){
-		
-      if (err) {
-		    res.json({ status : "error" });
-		    return console.error(err);
-			
-		  }
-		  if (user) {
-		    //console.log(events);
-			res.json({ status : "ok", feedlength : user.feed.length });
-			
-			
-		  }
-		  
-		  });
-		  
-	break;
-	case 'getfeeds' :
-	  db.User.findById(queryString.userId, function (err, user){
-			if (err) {
-			  res.json({ status : "error" });
-			  return console.error(err);	
-			}
-			if (user) {
-			  res.json({ status : "ok", feed : user.feed });
-			} 
-	  });
-		  
-	break;
-	/*case 'getfeedby' :
-	if (isUndef(queryString.userId) || isUndef(queryString.entityType) || isUndef(queryString.entityId)) {
-		res.json({ status : "error" });
-	} else {
-		db.User.findById(queryString.userId, function (err, user){
-			if (err) {
-			  res.json({ status : "error" });
-			  return console.error(err);	
-			}
-			if (user) {
-			  res.json({ status : "ok", feed : user.feed });
-			} 
-	  })
-
-	}
-	 
-		  
-	break;*/
-	case 'addfriend' :
-	  res.setHeader('Access-Control-Allow-Origin', '*');
-	  if (isUndef(queryString.userId) || isUndef(queryString.friendId)) {
-	    db.User.findOne({ name: queryString.friendlogin }, function(err, result) {
-	      if (err) {
-		    return console.error(err);
-		  }
-		  if (result) {
-		    res.json({friendId : result._id});
 		  } else {
-		    res.json({status : "error", msg : "Cant't find this user" });
-		  }
-		});
-	  } else {
-	    var userName = '';
-	    db.User.findOne({ _id: queryString.userId }, function (err, user){
-          user.friendsIds.push(queryString.friendId);
-		  user.save();
-		  userName = user.name;
-		  
-		  res.json({status : 'adding to friendlist'});
-		  
-		  /*addToFeed(queryString.friendId, {
-			entity : 'user',
-			entityId : queryString.userId,
-			text : 'User '+userName+' has added you to the contact list',
-			isLinked : false
-		  });*/
-		});
-	    
-		/*db.User.findById(queryString.friendId, function (err, user){
-		  user.feed.unshift({
-		    entity : 'user',
-			entityId : queryString.userId,
-			text : 'User '+userName+' has added you to the contact list',
-			date : {type: Date, default: Date.now},
-			isLinked : false
-		  });
-		  user.save();
-		});*/
-		
-	  }
-	break;
-	
-	case 'delfriend' :
-	  res.setHeader('Access-Control-Allow-Origin', '*');
-	  
-	    db.User.findOne({ _id: queryString.userId }, function (err, usr){
-		
-          if (err) {
-		    return console.error(err);
-		  }
-		  if (usr) {
-		    var deletingFriendIndex = usr.friendsIds.indexOf(queryString.friendId);
-			if (deletingFriendIndex >= 0) {
-			  usr.friendsIds.splice(deletingFriendIndex, 1);
-			  usr.save();
-			  res.json({ status : "removed" });
-			} else {
-			  res.json({ status : "error" });
-			}
-			
-		  }
-		});
-	    //res.json({status : 'deleting from friendlist'});
-	  
-	break;
-
-	
-	case 'getmyfriends' :
-	  res.setHeader('Access-Control-Allow-Origin', '*');
-	  db.User.findOne({ _id: queryString.userId })
-	  
-	  .exec( function(err, result) {
-	  //console.log(result);
-	      if (err) {
-		    return console.error(err);
-		  }
-		  if (!result) {
-		    res.json({ status : "error" });
-		  } else {
-		    var friendsList = {};
-			/*result.friendsIds.forEach( function(friend) {
-				console.log(friend);
-			  db.User.findById(friend, function(err, friendData) {
-				if (err) {
-		          return console.error(err);
-				}
-				if (friendData) {
-				console.log(friendData.name);
-					friendsList[friendData._id] = friendData.name;
-				} 
-			  });
-			});*/
-			db.User
-			  .where('_id').in(result.friendsIds)
-			  .exec(function(err, friendsData) {
-			    if (err) {
-				  return console.error(err);
-				} else {
-				  friendsData.forEach( function(friend) {
-				    friendsList[friend._id] = {name : friend.name, id : friend._id};
-				  });
-				  
-				}
-				 res.json( {status : 'ok', friendsList : friendsList });
-			  });
-			/*({_id : {$in result.friendsIds}}, function(err, friendData) {
-				if (err) {
-		          return console.error(err);
-				}
-				if (friendData) {
-				console.log(friendData);
-					//friendsList[friendData._id] = friendData.name;
-				} 
+		    var userName = '';
+		    db.User.findOne({ _id: requestSender }, function (err, user){
+	          user.friendsIds.push(queryString.friendId);
+			  user.save();
+			  userName = user.name;
+			  
+			  res.json({status : 'adding to friendlist'});
+			  
+			  /*addToFeed(queryString.friendId, {
+				entity : 'user',
+				entityId : queryString.userId,
+				text : 'User '+userName+' has added you to the contact list',
+				isLinked : false
 			  });*/
-				
-			
-		   
+			});
 		    
-		  }
-	    });
-	break;
-	case 'getevent' :
-	  db.Event.findById(queryString.eventId, function (err, event){
-		
-          if (err) {
-		    res.json({ status : "error" });
-		    return console.error(err);
-			
-		  }
-		  if (event) {
-		    //console.log(event);
-			var friendsInEventList = {};
-			
-			db.User
-			  .where('_id').in(event.friendsIds)
-			  .exec(function(err, friendsData) {
-			    if (err) {
-				  return console.error(err);
-				} else {
-				  //console.log(friendsData);
-				  
-				  friendsData.forEach( function(friend) {
-				    friendsInEventList[friend._id] = ({name : friend.name, id : friend._id});
-				  });
-				  
-				}
-				//console.log(friendsInEventList);
-				var eventData = {event : event, friends : friendsInEventList};
-				//console.log(eventData);
-				 res.json( {status : 'ok', event : eventData});
+			/*db.User.findById(queryString.friendId, function (err, user){
+			  user.feed.unshift({
+			    entity : 'user',
+				entityId : queryString.userId,
+				text : 'User '+userName+' has added you to the contact list',
+				date : {type: Date, default: Date.now},
+				isLinked : false
 			  });
-			//res.json({ status : "ok", event : event });
-			
+			  user.save();
+			});*/
 			
 		  }
-		  
-		  });
-		  
-	break;
-	case 'geteventmembers' :
-	  db.Event.findById(queryString.eventId, function (err, event){
+		break;
 		
-          if (err) {
-		    res.json({ status : "error" });
-		    return console.error(err);
+		case 'delfriend' :
+		  
+		    db.User.findOne({ _id: requestSender }, function (err, usr){
 			
-		  }
-		  if (event) {
-		    var allEventMembers = event.friendsIds;
-			//console.log(allEventMembers);
-			allEventMembers.push(event.ownerId);
-			var friendsInEventList = {};
-			//console.log(allEventMembers);
-			db.User
-			  .where('_id').in(allEventMembers)
-			  .exec(function(err, friendsData) {
-			    if (err) {
-				  return console.error(err);
-				} else {
-				  //console.log(friendsData);
-				  
-				  friendsData.forEach( function(friend) {
-				    friendsInEventList[friend._id] = ({name : friend.name, id : friend._id});
+	        if (err) {
+				    return console.error(err);
+				  }
+			  if (usr) {
+			    var deletingFriendIndex = usr.friendsIds.indexOf(queryString.friendId);
+					if (deletingFriendIndex >= 0) {
+					  usr.friendsIds.splice(deletingFriendIndex, 1);
+					  usr.save();
+					  res.json({ status : "removed" });
+					} else {
+					  res.json({ status : "error" });
+					}
+				
+			  }
+			});
+		    //res.json({status : 'deleting from friendlist'});
+		  
+		break;
+
+		
+		case 'getmyfriends' :
+		  //console.log(requestSender);
+		  db.User.findOne({ _id: requestSender })
+		  
+		  .exec( function(err, result) {
+		  //console.log(result);
+		  //console.log('MWE');
+		      if (err) {
+			    return console.error(err);
+			  }
+			  if (!result) {
+			    res.json({ status : "error" });
+			  } else {
+			    var friendsList = {};
+				/*result.friendsIds.forEach( function(friend) {
+					console.log(friend);
+				  db.User.findById(friend, function(err, friendData) {
+					if (err) {
+			          return console.error(err);
+					}
+					if (friendData) {
+					console.log(friendData.name);
+						friendsList[friendData._id] = friendData.name;
+					} 
 				  });
-				  
-				}
-				//console.log(friendsInEventList);
-				//var eventMembers = {event : event, friends : friendsInEventList};
-				//console.log(eventData);
-				 res.json( {status : 'ok', eventMembers : friendsInEventList});
+				});*/
+				db.User
+				  .where('_id').in(result.friendsIds)
+				  .exec(function(err, friendsData) {
+				    if (err) {
+					  return console.error(err);
+					} else {
+					  friendsData.forEach( function(friend) {
+					    friendsList[friend._id] = {name : friend.name, id : friend._id};
+					  });
+					  
+					}
+					 res.json( {status : 'ok', friendsList : friendsList });
+				  });
+				/*({_id : {$in result.friendsIds}}, function(err, friendData) {
+					if (err) {
+			          return console.error(err);
+					}
+					if (friendData) {
+					console.log(friendData);
+						//friendsList[friendData._id] = friendData.name;
+					} 
+				  });*/
+					
+				
+			   
+			    
+			  }
+		    });
+		break;
+		case 'getevent' :
+		  db.Event.findById(queryString.eventId, function (err, event){
+			
+	      if (err) {
+			    res.json({ status : "error" });
+			    return console.error(err);
+				
+			  }
+			  if (event) {
+
+
+			    //TODO: check is user in eventmember
+				var friendsInEventList = {};
+				
+				// TODO!!! Populate!
+				db.User
+				  .where('_id').in(event.friendsIds)
+				  .exec(function(err, friendsData) {
+				    if (err) {
+					  return console.error(err);
+					} else {
+					  //console.log(friendsData);
+					  
+					  friendsData.forEach( function(friend) {
+					    friendsInEventList[friend._id] = ({name : friend.name, id : friend._id});
+					  });
+					  
+					}
+					//console.log(friendsInEventList);
+					var eventData = {event : event, friends : friendsInEventList};
+					//console.log(eventData);
+					 res.json( {status : 'ok', event : eventData});
+				  });
+				//res.json({ status : "ok", event : event });
+				
+				
+			  }
+			  
 			  });
-			//res.json({ status : "ok", event : event });
+			  
+		break;
+		case 'geteventmembers' :
+		  db.Event.findById(queryString.eventId, function (err, event){
 			
-			
-		  }
-		  
-		  });
-		  
-	break;
-	
-	case 'getevents' :
-	  db.Event.find({$or:[{friendsIds : queryString.userId}, {ownerId : queryString.userId}], active : queryString.active}, function (err, events){
+	          if (err) {
+			    res.json({ status : "error" });
+			    return console.error(err);
+				
+			  }
+			  //TODO: check is user in eventmember
+			  if (event) {
+			    var allEventMembers = event.friendsIds;
+				//console.log(allEventMembers);
+				allEventMembers.push(event.ownerId);
+				var friendsInEventList = {};
+				//console.log(allEventMembers);
+				db.User
+				  .where('_id').in(allEventMembers)
+				  .exec(function(err, friendsData) {
+				    if (err) {
+					  return console.error(err);
+					} else {
+					  //console.log(friendsData);
+					  
+					  friendsData.forEach( function(friend) {
+					    friendsInEventList[friend._id] = ({name : friend.name, id : friend._id});
+					  });
+					  
+					}
+					//console.log(friendsInEventList);
+					//var eventMembers = {event : event, friends : friendsInEventList};
+					//console.log(eventData);
+					 res.json( {status : 'ok', eventMembers : friendsInEventList});
+				  });
+				//res.json({ status : "ok", event : event });
+				
+				
+			  }
+			  
+			  });
+			  
+		break;
 		
-          if (err) {
-		    res.json({ status : "error" });
-		    return console.error(err);
-			
-		  }
-		  if (events) {
-		    //console.log(events);
-			res.json({ status : "ok", events : events });
-			
-			
-		  }
-		  
-		  });
-		  
-	break;
-	
-	case 'getexpenses' :
-	//res.json(queryString);
-	
-	  db.Expense.find({ eventId : queryString.eventId }, function (err, expenses){
+		case 'getevents' :
+		  db.Event.find({$or:[{friendsIds : requestSender}, {ownerId : requestSender}], active : queryString.active}, function (err, events){
+					//console.log('requestSender');
+	          if (err) {
+			    res.json({ status : "error" });
+			    return console.error(err);
+				
+			  }
+			  if (events) {
+			    //console.log(events);
+				res.json({ status : "ok", events : events });
+				
+				
+			  }
+			  
+			  });
+			  
+		break;
 		
-          if (err) {
-		    res.json({ status : "error" });
-		    return console.error(err);
-			
-		  }
-		  if (expenses) {
-		    //console.log(events);
-			res.json({ status : "ok", expenses : expenses });
-			
-			
-		  }
-		  
-		  });
-		  
-	break;
-	case 'getexpensesforbalanse' :
-	//res.json(queryString);
-	
-	  db.Expense.find({ eventId : queryString.eventId })
-	  .populate('ownerId', 'name')
-	  .populate('details.memberId', 'name')
-	  .exec(function (err, expenses){
+		case 'getexpenses' :
+		//res.json(queryString);
 		
-          if (err) {
-		    res.json({ status : "error" });
-		    return console.error(err);
+		  db.Expense.find({ eventId : queryString.eventId }, function (err, expenses){
 			
-		  }
-		  if (expenses) {
-		    //console.log(events);
-			res.json({ status : "ok", expenses : expenses });
-			
-			
-		  }
-		  
-		  });
-		  
-	break;
-	case 'getexpense' :
-	//res.json(queryString);
-	
-	  db.Expense.findById({/*eventId : queryString.eventId,*/ _id : queryString.expenseId })
-	  .populate('ownerId', 'name')
-	  .populate('details.memberId', 'name')
-	  .exec(function (err, expense){
+	          if (err) {
+			    res.json({ status : "error" });
+			    return console.error(err);
+				
+			  }
+
+			  //TODO : check user permissions
+			  if (expenses) {
+			    //console.log(events);
+				res.json({ status : "ok", expenses : expenses });
+				
+				
+			  }
+			  
+			  });
+			  
+		break;
+		case 'getexpensesforbalanse' :
+		//res.json(queryString);
 		
-          if (err) {
-		    res.json({ status : "error" });
-		    return console.error(err);
+		  db.Expense.find({ eventId : queryString.eventId })
+		  .populate('ownerId', 'name')
+		  .populate('details.memberId', 'name')
+		  .exec(function (err, expenses){
+			//TODO : check user permissions
+	          if (err) {
+			    res.json({ status : "error" });
+			    return console.error(err);
+				
+			  }
+			  if (expenses) {
+			    //console.log(events);
+				res.json({ status : "ok", expenses : expenses });
+				
+				
+			  }
+			  
+			  });
+			  
+		break;
+		case 'getexpense' :
+		//res.json(queryString);
+		
+		  db.Expense.findById({/*eventId : queryString.eventId,*/ _id : queryString.expenseId })
+		  .populate('ownerId', 'name')
+		  .populate('details.memberId', 'name')
+		  .exec(function (err, expense){
 			
-		  }
-		  if (expense) {
-		    //console.log(events);
-			res.json({ status : "ok", expense : expense });
-			
-			
-		  } else {
-		    res.json({ status : "ok", msg : 'nothing' });
-		  }
-		  
-		  });
-		  
-	break;
+	          if (err) {
+			    res.json({ status : "error" });
+			    return console.error(err);
+				
+			  }
+			  if (expense) {
+			    //console.log(events);
+				res.json({ status : "ok", expense : expense });
+				
+				
+			  } else {
+			    res.json({ status : "ok", msg : 'nothing' });
+			  }
+			  
+			  });
+			  
+		break;
   }
  // res.send('Hello Worlddmhjmhmhdd!');
 });
@@ -521,7 +593,7 @@ app.post('/', function (req, res) {
 	    res.json( {status : 'error'});
 	    return;
 	  }
-	  if (isUndef(req.body.ownerId) || isUndef(req.body.friendsInEvent)) {
+	  if (isUndef(req.body.friendsInEvent)) {
 	    res.json( {status : 'error'});
 	    return;
 	  }
@@ -538,7 +610,7 @@ app.post('/', function (req, res) {
 	  var newEvent = new db.Event({
   		name : eventData.name,
 		description : eventData.description,
-		ownerId : req.body.ownerId,
+		ownerId : requestSender,
 		friendsIds : req.body.friendsInEvent,
 		active : true
 	  });
@@ -548,14 +620,15 @@ app.post('/', function (req, res) {
 			return console.error(err);
 		  } else {
 			//newEventData = result;
-			res.json({status : "Event create" });
-			addToFeed(req.body.friendsInEvent, {
-			  entityType : 'event',
-			  entityName : eventData.name,
-			  entityId : result._id,
-			  text : 'You has been added to the new event named ' + result.name,
-			  entityAction : 'adding'
-			});
+			//console.log('new creation');
+				res.json({status : "ok" });
+				addToFeed(req.body.friendsInEvent, {
+				  entityType : 'event',
+				  entityName : eventData.name,
+				  entityId : result._id,
+				  text : 'You has been added to the new event named ' + result.name,
+				  entityAction : 'adding'
+				});
 		  }
 		});
 		/*db.User.where('_id').in(req.body.friendsInEvent).exec(function(err, friendsData) {
@@ -588,7 +661,7 @@ app.post('/', function (req, res) {
 	    res.json( {status : 'error 1'});
 	    return;
 	  }
-	  if (isUndef(req.body.ownerId) || isUndef(req.body.friendsInEvent)) {
+	  if (isUndef(req.body.friendsInEvent)) {
 	    res.json( {status : 'error 2'});
 	    return;
 	  }
@@ -604,26 +677,28 @@ app.post('/', function (req, res) {
 	  }
 		
 		
-		db.Event.findOne({ownerId : req.body.ownerId, _id : req.body.eventData._id },
-  		  function (err, event){
+		db.Event.findOne({ownerId : requestSender, _id : req.body.eventData._id }, function (err, event){
+
+			//console.log('requestSender');
+
 		  if (err) {
 		    res.json({status : "error" });
 		  } else {
 		  //console.log(event);
 		    event.name = eventData.name;
-			event.description = eventData.description;
-			event.active = eventData.active;
-			event.friendsIds = req.body.friendsInEvent;
+				event.description = eventData.description;
+				event.active = eventData.active;
+				event.friendsIds = req.body.friendsInEvent;
 		    event.save();
-			res.json({status : "Event update" });
-			
-			addToFeed(req.body.friendsInEvent, {
-			  entityType : 'event',
-			  entityName : eventData.name,
-			  entityId : req.body.eventData._id,
-			  text : 'Event was updated ' + eventData.name,
-			  entityAction : 'editing'
-			});
+				res.json({status : "ok" });
+				
+				addToFeed(req.body.friendsInEvent, {
+				  entityType : 'event',
+				  entityName : eventData.name,
+				  entityId : req.body.eventData._id,
+				  text : 'Event was updated ' + eventData.name,
+				  entityAction : 'editing'
+				});
 		  }
 		});
 		
@@ -656,7 +731,7 @@ app.post('/', function (req, res) {
 	    res.json( {status : 'error'});
 	    return;
 	  }
-	  if (isUndef(inpData.ownerId) || isUndef(inpData.eventId) || isUndef(inpData.checkedMembers)) {
+	  if (isUndef(inpData.eventId) || isUndef(inpData.checkedMembers)) {
 	    res.json( {status : 'error'});
 	    return;
 	  }	  
@@ -667,7 +742,7 @@ app.post('/', function (req, res) {
 	  var newExpense = new db.Expense({
   		name : inpData.expenseData.name,
 		eventId : inpData.eventId,
-		ownerId : inpData.ownerId,
+		ownerId : requestSender,
 		details : inpData.checkedMembers,
 		comments : []
 	  });
@@ -705,7 +780,7 @@ app.post('/', function (req, res) {
 	    res.json( {status : 'error'});
 	    return;
 	  }
-	  if (isUndef(inpData.ownerId) || isUndef(inpData.eventId) || isUndef(inpData.checkedMembers)) {
+	  if (isUndef(inpData.eventId) || isUndef(inpData.checkedMembers)) {
 	    res.json( {status : 'error'});
 	    return;
 	  }	  
@@ -713,7 +788,7 @@ app.post('/', function (req, res) {
 	    res.json( {status : 'error'});
 	    return;	
 	  }	  
-	  db.Expense.findOne({ _id : inpData.expenseData.id, ownerId : inpData.ownerId })
+	  db.Expense.findOne({ _id : inpData.expenseData.id, ownerId : requestSender })
 	  .exec(function (err, expense) {
 	  
 	    expense.name = inpData.expenseData.name;
@@ -750,7 +825,7 @@ app.post('/', function (req, res) {
 	case 'approve' :
 
 	  var inpData = req.body;
-	  if (isUndef(inpData.detailId) || isUndef(inpData.expenseId) || isUndef(inpData.ownerId)) {
+	  if (isUndef(inpData.detailId) || isUndef(inpData.expenseId)) {
 	    res.json( {status : 'error'});
 	    return;
 	  }
@@ -758,7 +833,7 @@ app.post('/', function (req, res) {
 	  db.Expense.findOne({ _id : inpData.expenseId })
 	  .exec(function (err, expense) {
 	    expense.details.forEach(function (subject) {
-		  if (subject.memberId == inpData.ownerId && inpData.detailId == subject._id) {
+		  if (subject.memberId == requestSender && inpData.detailId == subject._id) {
 		    /*var updExpense = new db.Expense({
 			  approved : !subject.approved
 		    });*/
@@ -795,7 +870,7 @@ app.post('/', function (req, res) {
 	  //console.log(inpData);
 	  
 	  
-	  if (isUndef(inpData.commentText) || isUndef(inpData.expenseId) || isUndef(inpData.ownerId) || isUndef(inpData.isImportant)) {
+	  if (isUndef(inpData.commentText) || isUndef(inpData.expenseId) || isUndef(inpData.isImportant)) {
 	    res.json( {status : 'error'});
 	    return;
 	  }
@@ -810,7 +885,7 @@ app.post('/', function (req, res) {
 	  .exec(function (err, expense) {
 	    
 		expense.comments.unshift({
-		  memberId : inpData.ownerId,
+		  memberId : requestSender,
 		  text : encodedStr,
 		  date : new Date(),
 		  isImportant : inpData.isImportant
@@ -848,12 +923,12 @@ app.post('/', function (req, res) {
 	case 'clearfeedby' :
 
 	  var inpData = req.body;
-	  if (isUndef(inpData.entityType) || isUndef(inpData.entityId) || isUndef(inpData.ownerId)) {
+	  if (isUndef(inpData.entityType) || isUndef(inpData.entityId)) {
 	    res.json( {status : 'error'});
 	    return;
 	  }
 	  
-	  db.User.findOne({ _id : inpData.ownerId })
+	  db.User.findOne({ _id : requestSender })
 	  .exec(function (err, user) {
 	   /* user.feed.forEach(function (feedItem) {
 	    	console.log(feedItem);

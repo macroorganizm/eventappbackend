@@ -1,6 +1,6 @@
 {
-  "name": "untitled1",
-  "version": "0.0.0",
+  "name": "eventappbackend",
+  "version": "0.0.1",
   "private": true,
   "scripts": {
     "start": "node ./bin/www"
@@ -11,8 +11,7 @@
     "debug": "~2.2.0",
     "express": "~4.13.0",
     "express-session": "^1.11.3",
-    "jade": "~1.11.0",
-    "morgan": "~1.6.1",
+    "jsonwebtoken": "^5.0.2",
     "mongoose": "^4.0.0",
     "serve-favicon": "~2.3.0"
   }
