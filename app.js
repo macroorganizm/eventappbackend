@@ -221,7 +221,7 @@ app.get('/', function (req, res) {
 					return console.error(err);
 				  } else {
 				    console.log(result);
-				    res.json({status : "Registration complete" });
+				    res.json({status : "ok" });
 				  }
 				});
 			    
@@ -286,7 +286,7 @@ app.get('/', function (req, res) {
 			    return console.error(err);
 			  }
 			  if (result) {
-			    res.json({friendId : result._id});
+			    res.json({status : 'ok', friendId : result._id});
 			  } else {
 			    res.json({status : "error", msg : "Cant't find this user" });
 			  }
@@ -298,7 +298,7 @@ app.get('/', function (req, res) {
 			  user.save();
 			  userName = user.name;
 			  
-			  res.json({status : 'adding to friendlist'});
+			  res.json({status : 'ok'});
 			  
 			  /*addToFeed(queryString.friendId, {
 				entity : 'user',
@@ -334,7 +334,7 @@ app.get('/', function (req, res) {
 					if (deletingFriendIndex >= 0) {
 					  usr.friendsIds.splice(deletingFriendIndex, 1);
 					  usr.save();
-					  res.json({ status : "removed" });
+					  res.json({ status : "ok" });
 					} else {
 					  res.json({ status : "error" });
 					}
